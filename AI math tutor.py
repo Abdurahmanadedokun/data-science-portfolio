@@ -51,7 +51,7 @@ def ask_llm(messages, temp=0.3):
 # ---------------- RENDER MATH ----------------
 def render_math_paper_style(text):
     """
-    Renders text with LaTeX blocks properly.
+    Renders text with mixed LaTeX and plain-text "If ... then ..." style.
     Anything wrapped in $$ ... $$ is rendered as math.
     """
     blocks = text.split("$$")
@@ -86,27 +86,21 @@ if pdf:
 # ---------------- TABS ----------------
 tabs = st.tabs(["📖 Teach Mode", "📝 Quiz Mode", "📊 Progress"])
 
-# ---------------- SYSTEM PROMPT ----------------
+# ---------------- SYSTEM PROMPT (Mixed Style) ----------------
 SYSTEM_PROMPT = """
 You are a professional mathematics tutor.
+
 Rules:
-- Automatically identify the topic.
-- Explain step by step like writing on paper.
-- ALL mathematics must be written in LaTeX.
-- Use × for multiplication, fractions, powers, aligned equations.
-- Wrap ALL math expressions inside $$ ... $$ for block math.
-- Do NOT put parentheses around variables like (x) or (y^2). Use proper LaTeX: x, y^2, etc.
-- For multi-step derivations, use aligned equations with \\begin{align*} ... \\end{align*}.
-- For multiple cases, use the align* environment:
-\\begin{align*}
-y &\\equiv 0 \\pmod{4} \\implies y^2 \\equiv 0 \\pmod{4} \\\\
-y &\\equiv 1 \\pmod{4} \\implies y^2 \\equiv 1 \\pmod{4} \\\\
-y &\\equiv 2 \\pmod{4} \\implies y^2 \\equiv 0 \\pmod{4} \\\\
-y &\\equiv 3 \\pmod{4} \\implies y^2 \\equiv 1 \\pmod{4}
-\\end{align*}
-- Use \\text{...} for textual explanations inside equations.
-- Number each step clearly.
-- Use uploaded PDF content if available to improve the answer.
+1. For multi-step derivations, fractions, powers, and equations, use LaTeX math inside $$ ... $$.
+2. For modulo/case checks or “If ... then ...” explanations, write in plain text style, like:
+If y ≡ 0 mod 4, then y^2 ≡ 0 mod 4
+If y ≡ 1 mod 4, then y^2 ≡ 1 mod 4
+If y ≡ 2 mod 4, then y^2 ≡ 0 mod 4
+If y ≡ 3 mod 4, then y^2 ≡ 1 mod 4
+3. DO NOT put parentheses around variables in any explanations.
+4. Use \text{...} for textual explanations inside LaTeX.
+5. Step numbers should be included in both LaTeX and plain-text steps.
+6. Apply this style to all Teach Mode, Quiz Mode, and Hint outputs.
 """
 
 # ================== TEACH MODE ==================
@@ -125,7 +119,7 @@ with tabs[0]:
                 {"role": "user", "content": f"Question: {question}\nContext: {context}"}
             ]
             answer = ask_llm(messages)
-            st.markdown("### ✏️ Solution (Textbook-Style Math)")
+            st.markdown("### ✏️ Solution (Textbook + If-Then Style)")
             render_math_paper_style(answer)
 
 # ================== QUIZ MODE ==================
@@ -141,11 +135,10 @@ with tabs[1]:
         quiz_prompt = f"""
 Generate {num_q} {level} math questions.
 For EACH question:
-- Provide step-by-step solution
-- Use LaTeX math only
-- Paper-style formatting
-- Include final answer clearly
-Wrap all math expressions in $$ $$.
+- Provide step-by-step solution.
+- Use LaTeX math for equations, fractions, and powers.
+- Use plain-text "If ... then ..." style for modulo/case checks.
+- Include final answer clearly.
 """
         quizzes = ask_llm([{"role": "system", "content": SYSTEM_PROMPT + "\n" + quiz_prompt}])
         st.session_state.quizzes = quizzes.split("\n\n")
@@ -162,8 +155,8 @@ Wrap all math expressions in $$ $$.
                 # Request step-by-step hints
                 hint_prompt = f"""
 Split the solution of the following math problem into 3 hints, step by step.
+Use LaTeX math for equations/fractions/powers and plain-text "If ... then ..." for modulo/case checks.
 Do NOT give the final answer immediately.
-Format as numbered hints in LaTeX math mode.
 
 Problem:
 {q}
@@ -192,7 +185,7 @@ You are a strict math examiner.
 - Check each step logically.
 - Point out first wrong step (if any).
 - Provide correction hints.
-- Use LaTeX paper-style math.
+- Use LaTeX for equations/fractions/powers and "If ... then ..." style for modulo/case checks.
 - End with: Final Verdict: Correct or Incorrect
 
 Question & Solution:
