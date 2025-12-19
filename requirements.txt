@@ -2,6 +2,6 @@ streamlit
 openai==0.28.1
 langchain
 langchain_community
-faiss-cpu
 pypdf
+
 
