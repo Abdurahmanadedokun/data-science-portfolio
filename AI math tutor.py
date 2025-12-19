@@ -99,6 +99,7 @@ Question: {question}
 Explain step by step.
 End with ONE short question to check understanding.
 """}
+            ]
             answer = ask_llm(messages, temp=0.3)
 
             st.markdown("### 📖 Step-by-Step Explanation")
