@@ -8,21 +8,20 @@ Original file is located at
 """
 
 
+import openai
 import os
-os.environ["OPENAI_API_KEY"] = "your_api_key_here"
 
-import os
-from openai import OpenAI
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Load API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def call_llm(messages, temperature=0.4):
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=messages,
         temperature=temperature
     )
     return response.choices[0].message.content
+
 
 from langchain_community.document_loaders import PyPDFLoader
 
