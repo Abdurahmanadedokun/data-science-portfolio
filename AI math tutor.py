@@ -25,7 +25,7 @@ PROGRESS_FILE = "progress.json"
 def load_progress():
     if not os.path.exists(PROGRESS_FILE):
         return {}
-    with open(PROGRESS_FILE) as f:
+    with open(PROGRESS_FILE, "r") as f:
         return json.load(f)
 
 def save_progress(data):
@@ -76,10 +76,24 @@ if pdf:
         f.write(pdf.read())
     loader = PyPDFLoader("temp.pdf")
     docs = loader.load()
-    embeddings = OpenAIEmbeddings()
-    FAISS.from_documents(docs, embeddings)
-    context = "\n".join([d.page_content[:500] for d in docs[:3]])
-    st.sidebar.success("PDF loaded successfully")
+    
+    # Filter empty pages
+    texts = [d.page_content for d in docs if d.page_content.strip()]
+    
+    # Split long pages into smaller chunks
+    chunk_size = 1000
+    chunks = []
+    for t in texts:
+        for i in range(0, len(t), chunk_size):
+            chunks.append(t[i:i+chunk_size])
+    
+    if chunks:
+        embeddings = OpenAIEmbeddings()
+        db = FAISS.from_texts(chunks, embeddings)
+        context = "\n".join(chunks[:3])  # show first few chunks for reference
+        st.sidebar.success("PDF loaded successfully!")
+    else:
+        st.sidebar.warning("PDF has no readable text. Skipping embeddings.")
 
 # ---------------- TABS ----------------
 tabs = st.tabs(["📖 Teach Mode", "📝 Quiz Mode", "📊 Progress"])
@@ -92,10 +106,13 @@ with tabs[0]:
     )
 
     if st.button("Explain Step-by-Step"):
-        messages = [
-            {
-                "role": "system",
-                "content": """
+        if not question.strip():
+            st.warning("Please type a question.")
+        else:
+            messages = [
+                {
+                    "role": "system",
+                    "content": """
 You are a professional mathematics tutor.
 Rules:
 - Automatically identify the topic.
@@ -104,17 +121,17 @@ Rules:
 - Use × for multiplication, fractions, powers, aligned equations.
 - Wrap math expressions inside $$ $$.
 - Number each step clearly.
+- Use uploaded PDF content if available to improve the answer.
 """
-            },
-            {
-                "role": "user",
-                "content": f"Question: {question}\nContext: {context}"
-            }
-        ]
-
-        answer = ask_llm(messages)
-        st.markdown("### ✏️ Solution (Paper Style)")
-        render_math_paper_style(answer)
+                },
+                {
+                    "role": "user",
+                    "content": f"Question: {question}\nContext: {context}"
+                }
+            ]
+            answer = ask_llm(messages)
+            st.markdown("### ✏️ Solution (Paper Style)")
+            render_math_paper_style(answer)
 
 # ================== QUIZ MODE ==================
 with tabs[1]:
@@ -124,7 +141,6 @@ with tabs[1]:
         progress = load_progress()
         user_data = progress.get(user, {})
         attempts = sum(v["attempts"] for v in user_data.values())
-
         level = "Beginner" if attempts < 3 else "Intermediate" if attempts < 6 else "Advanced"
 
         quiz_prompt = f"""
@@ -156,7 +172,7 @@ Wrap all math expressions in $$ $$.
             eval_prompt = f"""
 You are a strict math examiner.
 - Check each step logically.
-- Point out the first wrong step (if any).
+- Point out first wrong step (if any).
 - Provide correction hints.
 - Use LaTeX paper-style math.
 - End with: Final Verdict: Correct or Incorrect
