@@ -75,11 +75,9 @@ if pdf:
     loader = PyPDFLoader("temp.pdf")
     docs = loader.load()
     
-    # Filter out empty pages
     texts = [d.page_content for d in docs if d.page_content.strip()]
     
     if texts:
-        # Join first few pages for context
         context = "\n".join(texts[:3])
         st.sidebar.success("PDF loaded successfully! (Used as context only)")
     else:
@@ -88,11 +86,26 @@ if pdf:
 # ---------------- TABS ----------------
 tabs = st.tabs(["📖 Teach Mode", "📝 Quiz Mode", "📊 Progress"])
 
+# ---------------- SYSTEM PROMPT ----------------
+SYSTEM_PROMPT = """
+You are a professional mathematics tutor.
+Rules:
+- Automatically identify the topic.
+- Explain step by step like writing on paper.
+- ALL mathematics must be written in LaTeX.
+- Use × for multiplication, fractions, powers, aligned equations.
+- Wrap ALL math expressions inside $$ ... $$ for block math.
+- Do NOT put parentheses around variables like (x) or (y^2). Use proper LaTeX: x, y^2, etc.
+- For multi-step derivations, use aligned equations with \\begin{align*} ... \\end{align*}.
+- Number each step clearly.
+- Use uploaded PDF content if available to improve the answer.
+"""
+
 # ================== TEACH MODE ==================
 with tabs[0]:
     question = st.text_area(
         "Ask a math question:",
-        placeholder="e.g. Simplify 2^3 × 2^4"
+        placeholder="e.g. Solve x^2 + 3x - 4 = 0"
     )
 
     if st.button("Explain Step-by-Step"):
@@ -100,24 +113,8 @@ with tabs[0]:
             st.warning("Please type a question.")
         else:
             messages = [
-                {
-                    "role": "system",
-                    "content": """
-You are a professional mathematics tutor.
-Rules:
-- Automatically identify the topic.
-- Explain step by step like writing on paper.
-- ALL mathematics must be written in LaTeX.
-- Use × for multiplication, fractions, powers, aligned equations.
-- Wrap math expressions inside $$ $$.
-- Number each step clearly.
-- Use uploaded PDF content if available to improve the answer.
-"""
-                },
-                {
-                    "role": "user",
-                    "content": f"Question: {question}\nContext: {context}"
-                }
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Question: {question}\nContext: {context}"}
             ]
             answer = ask_llm(messages)
             st.markdown("### ✏️ Solution (Paper Style)")
@@ -154,23 +151,22 @@ Wrap all math expressions in $$ $$.
             if st.button(f"Question {i+1}", key=f"quiz_{i}"):
                 st.session_state.selected = i
                 st.session_state.hint_index = 0
-                # Request hints for the selected question
+                # Request step-by-step hints
                 hint_prompt = f"""
 Split the solution of the following math problem into 3 hints, step by step.
 Do NOT give the final answer immediately.
-Format as a numbered list of hints.
+Format as numbered hints in LaTeX math mode.
 
 Problem:
 {q}
 """
-                hints_text = ask_llm([{"role":"system","content":hint_prompt}])
+                hints_text = ask_llm([{"role":"system","content":SYSTEM_PROMPT + "\n" + hint_prompt}])
                 st.session_state.hints = [h for h in hints_text.split("\n") if h.strip()]
 
         selected_quiz = st.session_state.quizzes[st.session_state.selected]
         st.markdown("### 📝 Selected Question")
         render_math_paper_style(selected_quiz)
 
-        # Reveal Hint button
         if st.session_state.hints:
             if st.button("Reveal Next Hint"):
                 idx = st.session_state.hint_index
@@ -197,7 +193,7 @@ Question & Solution:
 Student Answer:
 {student_answer}
 """
-            feedback = ask_llm([{"role": "system", "content": eval_prompt}], temp=0.1)
+            feedback = ask_llm([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": eval_prompt}], temp=0.1)
             st.markdown("### 🧠 Feedback")
             render_math_paper_style(feedback)
 
