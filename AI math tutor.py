@@ -97,6 +97,14 @@ Rules:
 - Wrap ALL math expressions inside $$ ... $$ for block math.
 - Do NOT put parentheses around variables like (x) or (y^2). Use proper LaTeX: x, y^2, etc.
 - For multi-step derivations, use aligned equations with \\begin{align*} ... \\end{align*}.
+- For multiple cases, use the align* environment:
+\\begin{align*}
+y &\\equiv 0 \\pmod{4} \\implies y^2 \\equiv 0 \\pmod{4} \\\\
+y &\\equiv 1 \\pmod{4} \\implies y^2 \\equiv 1 \\pmod{4} \\\\
+y &\\equiv 2 \\pmod{4} \\implies y^2 \\equiv 0 \\pmod{4} \\\\
+y &\\equiv 3 \\pmod{4} \\implies y^2 \\equiv 1 \\pmod{4}
+\\end{align*}
+- Use \\text{...} for textual explanations inside equations.
 - Number each step clearly.
 - Use uploaded PDF content if available to improve the answer.
 """
@@ -117,7 +125,7 @@ with tabs[0]:
                 {"role": "user", "content": f"Question: {question}\nContext: {context}"}
             ]
             answer = ask_llm(messages)
-            st.markdown("### ✏️ Solution (Paper Style)")
+            st.markdown("### ✏️ Solution (Textbook-Style Math)")
             render_math_paper_style(answer)
 
 # ================== QUIZ MODE ==================
@@ -139,7 +147,7 @@ For EACH question:
 - Include final answer clearly
 Wrap all math expressions in $$ $$.
 """
-        quizzes = ask_llm([{"role": "system", "content": quiz_prompt}])
+        quizzes = ask_llm([{"role": "system", "content": SYSTEM_PROMPT + "\n" + quiz_prompt}])
         st.session_state.quizzes = quizzes.split("\n\n")
         st.session_state.selected = 0
         st.session_state.hint_index = 0
