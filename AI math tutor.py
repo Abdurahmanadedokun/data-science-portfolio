@@ -14,7 +14,7 @@ st.markdown(
 # ---------------- API KEY ----------------
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
-    st.error("OpenAI API key not found. Add it to Streamlit Secrets.")
+    st.error("OpenAI API key not found. Add it to Streamlit Secrets or environment variables.")
     st.stop()
 
 # ---------------- SESSION MEMORY ----------------
@@ -45,10 +45,8 @@ def update_progress(user, topic, correct):
 
 # ---------------- LLM ----------------
 def ask_llm_with_memory(user_input, temp=0.3):
-    # Append user input to session history
     st.session_state.chat_history.append({"role": "user", "content": user_input})
     
-    # Combine SYSTEM_PROMPT with history
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state.chat_history
     
     response = openai.ChatCompletion.create(
@@ -58,25 +56,13 @@ def ask_llm_with_memory(user_input, temp=0.3):
     )
     
     reply = response.choices[0].message.content
-    
-    # Save assistant reply to history
     st.session_state.chat_history.append({"role": "assistant", "content": reply})
     
     return reply
 
 # ---------------- RENDER MATH ----------------
-def render_math_paper_style(text):
-    """
-    Renders text with mixed LaTeX and plain-text "If ... then ..." style.
-    Anything wrapped in $$ ... $$ is rendered as math.
-    """
-    blocks = text.split("$$")
-    for i, block in enumerate(blocks):
-        if i % 2 == 1:
-            st.latex(block)
-        else:
-            if block.strip():
-                st.markdown(block)
+def render_math_plain(text):
+    st.markdown(text.replace("\n", "  \n"))
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
@@ -106,22 +92,20 @@ if pdf:
 # ---------------- TABS ----------------
 tabs = st.tabs(["📖 Teach Mode", "📝 Quiz Mode", "📊 Progress"])
 
-# ---------------- SYSTEM PROMPT (Mixed Style) ----------------
+# ---------------- SYSTEM PROMPT ----------------
 SYSTEM_PROMPT = """
 You are a professional mathematics tutor.
 
 Rules:
-1. For derivations, fractions, powers, and equations, use LaTeX math inside $$ ... $$.
-2. For modulo/case checks or “If ... then ...” explanations, write in plain text style, like:
-If y ≡ 0 mod 4, then y^2 ≡ 0 mod 4
-If y ≡ 1 mod 4, then y^2 ≡ 1 mod 4
-If y ≡ 2 mod 4, then y^2 ≡ 0 mod 4
-If y ≡ 3 mod 4, then y^2 ≡ 1 mod 4
-3. DO NOT put parentheses around variables in any explanations.
-4. Use \text{...} for textual explanations inside LaTeX.
-5. Step numbers should be included in both LaTeX and plain-text steps.
-6. Apply this style to all Teach Mode, Quiz Mode, and Hint outputs.
-7. Remember previous messages in the session. If student asks "Explain more on Question 1" or "Go deeper", continue from previous context.
+1. Write all math, fractions, powers, and equations in plain text, as if writing on paper.
+   Example: 2^3 * 3^2 / (4 + 1) = 72 / 5
+2. For modulo/case checks, use "If ... then ..." style:
+   If y ≡ 0 mod 4, then y^2 ≡ 0 mod 4
+   If y ≡ 1 mod 4, then y^2 ≡ 1 mod 4
+   If y ≡ 2 mod 4, then y^2 ≡ 0 mod 4
+   If y ≡ 3 mod 4, then y^2 ≡ 1 mod 4
+3. Include step numbers in all solutions.
+4. Remember previous messages in the session. If student asks "Explain more on Question 1" or "Go deeper", continue from previous context.
 """
 
 # ================== TEACH MODE ==================
@@ -135,9 +119,33 @@ with tabs[0]:
         if not question.strip():
             st.warning("Please type a question or follow-up request.")
         else:
-            answer = ask_llm_with_memory(f"Question: {question}\nContext: {context}")
-            st.markdown("### ✏️ Solution (Textbook + If-Then Style)")
-            render_math_paper_style(answer)
+            # Detect topic
+            topic_prompt = f"""
+Determine the main topic of the following math question. Answer in one word only (e.g., Algebra, Calculus, Geometry, Number Theory, Probability):
+
+Question:
+{question}
+"""
+            topic = ask_llm_with_memory(topic_prompt, temp=0)
+
+            # Solve with topic-specific strategy
+            answer_prompt = f"""
+You are a professional math tutor.
+- Detected topic: {topic.strip()}
+- Explain strategies for solving this type of problem.
+- Give a clear step-by-step solution in plain text.
+- Use "If ... then ..." style for modulo/case checks.
+- Number each step.
+- Keep it easy to understand as if teaching a student.
+
+Question:
+{question}
+"""
+            answer = ask_llm_with_memory(answer_prompt)
+            
+            st.markdown(f"### 🧩 Detected Topic: {topic.strip()}")
+            st.markdown("### ✏️ Solution (Paper-Style, Topic-Specific)")
+            render_math_plain(answer)
 
 # ================== QUIZ MODE ==================
 with tabs[1]:
@@ -147,32 +155,46 @@ with tabs[1]:
         progress = load_progress()
         user_data = progress.get(user, {})
         attempts = sum(v["attempts"] for v in user_data.values())
+        
         level = "Beginner" if attempts < 3 else "Intermediate" if attempts < 6 else "Advanced"
 
         quiz_prompt = f"""
-Generate {num_q} {level} math questions.
-For EACH question:
-- Provide step-by-step solution.
-- Use LaTeX math for equations, fractions, and powers.
-- Use plain-text "If ... then ..." style for modulo/case checks.
-- Include final answer clearly.
+Generate {num_q} math questions for a {level} student.
+- Provide questions in increasing difficulty.
+- Each question should have a step-by-step solution.
+- Use plain text for all math.
+- Use "If ... then ..." style for modulo/case checks.
+- Number each question clearly.
+- Include the final answer for each question.
 """
-        quizzes = ask_llm_with_memory(quiz_prompt)
-        st.session_state.quizzes = quizzes.split("\n\n")
+        quizzes_text = ask_llm_with_memory(quiz_prompt)
+        quizzes = []
+        lines = quizzes_text.split("\n")
+        current_q = ""
+        for line in lines:
+            if line.strip().startswith(tuple(f"{i}." for i in range(1, num_q+1))):
+                if current_q:
+                    quizzes.append(current_q.strip())
+                current_q = line
+            else:
+                current_q += "\n" + line
+        if current_q:
+            quizzes.append(current_q.strip())
+
+        st.session_state.quizzes = quizzes
         st.session_state.selected = 0
         st.session_state.hint_index = 0
         st.session_state.hints = []
 
-    if "quizzes" in st.session_state:
+    if "quizzes" in st.session_state and st.session_state.quizzes:
         st.markdown("### 📘 Generated Questions")
         for i, q in enumerate(st.session_state.quizzes):
             if st.button(f"Question {i+1}", key=f"quiz_{i}"):
                 st.session_state.selected = i
                 st.session_state.hint_index = 0
-                # Request step-by-step hints
                 hint_prompt = f"""
 Split the solution of the following math problem into 3 hints, step by step.
-Use LaTeX math for equations/fractions/powers and plain-text "If ... then ..." for modulo/case checks.
+Use plain text for all math, and "If ... then ..." for modulo/case checks.
 Do NOT give the final answer immediately.
 
 Problem:
@@ -183,7 +205,7 @@ Problem:
 
         selected_quiz = st.session_state.quizzes[st.session_state.selected]
         st.markdown("### 📝 Selected Question")
-        render_math_paper_style(selected_quiz)
+        render_math_plain(selected_quiz)
 
         if st.session_state.hints:
             if st.button("Reveal Next Hint"):
@@ -202,7 +224,7 @@ You are a strict math examiner.
 - Check each step logically.
 - Point out first wrong step (if any).
 - Provide correction hints.
-- Use LaTeX for equations/fractions/powers and "If ... then ..." style for modulo/case checks.
+- Use plain text for all math and "If ... then ..." style for modulo/case checks.
 - End with: Final Verdict: Correct or Incorrect
 
 Question & Solution:
@@ -213,7 +235,7 @@ Student Answer:
 """
             feedback = ask_llm_with_memory(eval_prompt, temp=0.1)
             st.markdown("### 🧠 Feedback")
-            render_math_paper_style(feedback)
+            render_math_plain(feedback)
 
             correct = "final verdict: correct" in feedback.lower()
             update_progress(user, "math", correct)
