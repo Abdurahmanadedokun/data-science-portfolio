@@ -7,7 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1bs4ffjwjeI3jmb-lfcDbd0TZnb32D81R
 """
 
-!pip install streamlit openai langchain langchain_community faiss-cpu pypdf pyttsx3 speechrecognition
 
 import os
 os.environ["OPENAI_API_KEY"] = "your_api_key_here"
