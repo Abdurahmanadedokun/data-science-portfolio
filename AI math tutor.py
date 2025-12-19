@@ -3,9 +3,9 @@ import openai
 import os
 import json
 
-from langchain.document_loaders import PyPDFLoader
-from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import OpenAIEmbeddings
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Math Tutor", layout="centered")
