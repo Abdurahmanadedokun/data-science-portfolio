@@ -119,7 +119,7 @@ with tabs[0]:
                 {"role": "user", "content": f"Question: {question}\nContext: {context}"}
             ]
             answer = ask_llm(messages)
-            st.markdown("### ✏️ Solution (Textbook + If-Then Style)")
+            st.markdown("### ✏️ Solution (Step-by-Step)")
             render_math_paper_style(answer)
 
 # ================== QUIZ MODE ==================
