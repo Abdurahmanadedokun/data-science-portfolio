@@ -17,6 +17,10 @@ if not openai.api_key:
     st.error("OpenAI API key not found. Add it to Streamlit Secrets.")
     st.stop()
 
+# ---------------- SESSION MEMORY ----------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
 # ---------------- PROGRESS ----------------
 PROGRESS_FILE = "progress.json"
 
@@ -40,13 +44,25 @@ def update_progress(user, topic, correct):
     save_progress(data)
 
 # ---------------- LLM ----------------
-def ask_llm(messages, temp=0.3):
+def ask_llm_with_memory(user_input, temp=0.3):
+    # Append user input to session history
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
+    
+    # Combine SYSTEM_PROMPT with history
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state.chat_history
+    
     response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=messages,
         temperature=temp
     )
-    return response.choices[0].message.content
+    
+    reply = response.choices[0].message.content
+    
+    # Save assistant reply to history
+    st.session_state.chat_history.append({"role": "assistant", "content": reply})
+    
+    return reply
 
 # ---------------- RENDER MATH ----------------
 def render_math_paper_style(text):
@@ -66,6 +82,10 @@ def render_math_paper_style(text):
 with st.sidebar:
     user = st.text_input("Student Name", "student")
     pdf = st.file_uploader("Upload Math PDF (optional)", type="pdf")
+    
+    if st.button("Reset Memory"):
+        st.session_state.chat_history = []
+        st.success("Memory reset. You can start a new question.")
 
 # ---------------- PDF CONTEXT ----------------
 context = ""
@@ -91,7 +111,7 @@ SYSTEM_PROMPT = """
 You are a professional mathematics tutor.
 
 Rules:
-1. For multi-step derivations, fractions, powers, and equations, use LaTeX math inside $$ ... $$.
+1. For derivations, fractions, powers, and equations, use LaTeX math inside $$ ... $$.
 2. For modulo/case checks or “If ... then ...” explanations, write in plain text style, like:
 If y ≡ 0 mod 4, then y^2 ≡ 0 mod 4
 If y ≡ 1 mod 4, then y^2 ≡ 1 mod 4
@@ -101,25 +121,22 @@ If y ≡ 3 mod 4, then y^2 ≡ 1 mod 4
 4. Use \text{...} for textual explanations inside LaTeX.
 5. Step numbers should be included in both LaTeX and plain-text steps.
 6. Apply this style to all Teach Mode, Quiz Mode, and Hint outputs.
+7. Remember previous messages in the session. If student asks "Explain more on Question 1" or "Go deeper", continue from previous context.
 """
 
 # ================== TEACH MODE ==================
 with tabs[0]:
     question = st.text_area(
-        "Ask a math question:",
-        placeholder="e.g. Solve x^2 + 3x - 4 = 0"
+        "Ask a math question or request further explanation:",
+        placeholder="e.g. Solve x^2 + 3x - 4 = 0 or Explain more on Question 1"
     )
 
     if st.button("Explain Step-by-Step"):
         if not question.strip():
-            st.warning("Please type a question.")
+            st.warning("Please type a question or follow-up request.")
         else:
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Question: {question}\nContext: {context}"}
-            ]
-            answer = ask_llm(messages)
-            st.markdown("### ✏️ Solution (Step-by-Step)")
+            answer = ask_llm_with_memory(f"Question: {question}\nContext: {context}")
+            st.markdown("### ✏️ Solution (Textbook + If-Then Style)")
             render_math_paper_style(answer)
 
 # ================== QUIZ MODE ==================
@@ -140,7 +157,7 @@ For EACH question:
 - Use plain-text "If ... then ..." style for modulo/case checks.
 - Include final answer clearly.
 """
-        quizzes = ask_llm([{"role": "system", "content": SYSTEM_PROMPT + "\n" + quiz_prompt}])
+        quizzes = ask_llm_with_memory(quiz_prompt)
         st.session_state.quizzes = quizzes.split("\n\n")
         st.session_state.selected = 0
         st.session_state.hint_index = 0
@@ -161,7 +178,7 @@ Do NOT give the final answer immediately.
 Problem:
 {q}
 """
-                hints_text = ask_llm([{"role":"system","content":SYSTEM_PROMPT + "\n" + hint_prompt}])
+                hints_text = ask_llm_with_memory(hint_prompt)
                 st.session_state.hints = [h for h in hints_text.split("\n") if h.strip()]
 
         selected_quiz = st.session_state.quizzes[st.session_state.selected]
@@ -194,7 +211,7 @@ Question & Solution:
 Student Answer:
 {student_answer}
 """
-            feedback = ask_llm([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": eval_prompt}], temp=0.1)
+            feedback = ask_llm_with_memory(eval_prompt, temp=0.1)
             st.markdown("### 🧠 Feedback")
             render_math_paper_style(feedback)
 
