@@ -3,8 +3,6 @@ import openai
 import os
 import json
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OpenAIEmbeddings
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="Smart AI Math Tutor", layout="wide")
@@ -77,23 +75,15 @@ if pdf:
     loader = PyPDFLoader("temp.pdf")
     docs = loader.load()
     
-    # Filter empty pages
+    # Filter out empty pages
     texts = [d.page_content for d in docs if d.page_content.strip()]
     
-    # Split long pages into smaller chunks
-    chunk_size = 1000
-    chunks = []
-    for t in texts:
-        for i in range(0, len(t), chunk_size):
-            chunks.append(t[i:i+chunk_size])
-    
-    if chunks:
-        embeddings = OpenAIEmbeddings()
-        db = FAISS.from_texts(chunks, embeddings)
-        context = "\n".join(chunks[:3])  # show first few chunks for reference
-        st.sidebar.success("PDF loaded successfully!")
+    if texts:
+        # Join first few pages for context
+        context = "\n".join(texts[:3])
+        st.sidebar.success("PDF loaded successfully! (Used as context only)")
     else:
-        st.sidebar.warning("PDF has no readable text. Skipping embeddings.")
+        st.sidebar.warning("PDF has no readable text. Skipping context.")
 
 # ---------------- TABS ----------------
 tabs = st.tabs(["📖 Teach Mode", "📝 Quiz Mode", "📊 Progress"])
@@ -155,18 +145,42 @@ Wrap all math expressions in $$ $$.
         quizzes = ask_llm([{"role": "system", "content": quiz_prompt}])
         st.session_state.quizzes = quizzes.split("\n\n")
         st.session_state.selected = 0
+        st.session_state.hint_index = 0
+        st.session_state.hints = []
 
     if "quizzes" in st.session_state:
         st.markdown("### 📘 Generated Questions")
         for i, q in enumerate(st.session_state.quizzes):
-            if st.button(f"Question {i+1}", key=i):
+            if st.button(f"Question {i+1}", key=f"quiz_{i}"):
                 st.session_state.selected = i
+                st.session_state.hint_index = 0
+                # Request hints for the selected question
+                hint_prompt = f"""
+Split the solution of the following math problem into 3 hints, step by step.
+Do NOT give the final answer immediately.
+Format as a numbered list of hints.
+
+Problem:
+{q}
+"""
+                hints_text = ask_llm([{"role":"system","content":hint_prompt}])
+                st.session_state.hints = [h for h in hints_text.split("\n") if h.strip()]
 
         selected_quiz = st.session_state.quizzes[st.session_state.selected]
         st.markdown("### 📝 Selected Question")
         render_math_paper_style(selected_quiz)
 
-        student_answer = st.text_area("Write your solution (step-by-step):")
+        # Reveal Hint button
+        if st.session_state.hints:
+            if st.button("Reveal Next Hint"):
+                idx = st.session_state.hint_index
+                if idx < len(st.session_state.hints):
+                    st.markdown(f"**Hint {idx+1}:** {st.session_state.hints[idx]}")
+                    st.session_state.hint_index += 1
+                else:
+                    st.info("No more hints available for this question.")
+
+        student_answer = st.text_area("Write your solution (step-by-step):", key="student_answer")
 
         if st.button("Submit Answer"):
             eval_prompt = f"""
