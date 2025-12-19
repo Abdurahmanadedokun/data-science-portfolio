@@ -121,7 +121,7 @@ with tabs[0]:
         else:
             # Detect topic
             topic_prompt = f"""
-Determine the main topic of the following math question. Answer in one word only (e.g., Algebra, Calculus, Geometry, Number Theory, Probability):
+Determine the main topic of the following math question. Answer in one word only (Algebra, Calculus, Geometry, Trigonometry, Number Theory, Probability):
 
 Question:
 {question}
@@ -147,8 +147,19 @@ Question:
             st.markdown("### ✏️ Solution (Paper-Style, Topic-Specific)")
             render_math_plain(answer)
 
-# ================== QUIZ MODE ==================
+# ================== QUIZ MODE WITH TOPIC SUGGESTION ==================
 with tabs[1]:
+    # Suggest topic based on last Teach Mode question
+    suggested_topic = "Algebra"
+    if st.session_state.chat_history:
+        for msg in reversed(st.session_state.chat_history):
+            if msg["role"] == "assistant" and "Detected Topic" in msg["content"]:
+                suggested_topic = msg["content"].split("Detected Topic:")[-1].strip()
+                break
+
+    topic_options = ["Algebra", "Calculus", "Geometry", "Trigonometry", "Number Theory", "Probability"]
+    selected_topic = st.selectbox("Select Topic for Quiz (or use suggested topic)", topic_options, index=topic_options.index(suggested_topic))
+
     num_q = st.number_input("Number of quiz questions", 1, 10, 3)
 
     if st.button("Generate Quiz"):
@@ -159,7 +170,7 @@ with tabs[1]:
         level = "Beginner" if attempts < 3 else "Intermediate" if attempts < 6 else "Advanced"
 
         quiz_prompt = f"""
-Generate {num_q} math questions for a {level} student.
+Generate {num_q} {selected_topic} math questions for a {level} student.
 - Provide questions in increasing difficulty.
 - Each question should have a step-by-step solution.
 - Use plain text for all math.
@@ -238,7 +249,7 @@ Student Answer:
             render_math_plain(feedback)
 
             correct = "final verdict: correct" in feedback.lower()
-            update_progress(user, "math", correct)
+            update_progress(user, selected_topic.lower(), correct)
 
 # ================== PROGRESS ==================
 with tabs[2]:
